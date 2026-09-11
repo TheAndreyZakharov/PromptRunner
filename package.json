@@ -1,0 +1,22 @@
+{
+  "name": "promptrunner",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc --noEmit && vite build",
+    "tauri": "tauri",
+    "dev:app": "bash scripts/dev-app.sh",
+    "package:all": "bash scripts/package-all.sh",
+    "test": "cargo test --manifest-path src-tauri/Cargo.toml"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.8.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.8.0",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.3"
+  }
+}

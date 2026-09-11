@@ -1,0 +1,49 @@
+name: Package Windows
+
+run-name: Windows package (${{ inputs.build_id }})
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_id:
+        description: Unique ID supplied by scripts/package-all.sh
+        required: true
+        type: string
+
+jobs:
+  package:
+    name: Build Windows installer
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install JavaScript dependencies
+        run: npm ci
+
+      - name: Build NSIS installer
+        run: npm run tauri build -- --bundles nsis --config src-tauri/tauri.package.conf.json
+
+      - name: Collect installer
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem -Path 'src-tauri/target/release/bundle/nsis' -Filter '*.exe' -Recurse | Select-Object -First 1
+          if ($null -eq $installer) {
+            throw 'Tauri did not create an NSIS .exe installer.'
+          }
+          New-Item -ItemType Directory -Force -Path '.package' | Out-Null
+          Copy-Item $installer.FullName '.package/PromptRunner-windows-x64-setup.exe'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: promptrunner-windows
+          path: .package/PromptRunner-windows-x64-setup.exe
+          if-no-files-found: error
+          retention-days: 7
