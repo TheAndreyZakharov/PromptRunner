@@ -115,15 +115,26 @@ fn load_settings() -> Result<AppSettings, String> {
             generation_timeout_seconds: 600,
             click_retries: 3,
             new_chat_every: 100,
-            theme: "system".into(),
+            theme: "dark".into(),
             min_pause_seconds: 12,
             ready_confirmations: 2,
             preserve_clipboard: true,
             ..Default::default()
         });
     }
-    serde_json::from_str(&fs::read_to_string(path).map_err(|e| e.to_string())?)
-        .map_err(|e| e.to_string())
+    let mut settings: AppSettings =
+        serde_json::from_str(&fs::read_to_string(&path).map_err(|e| e.to_string())?)
+            .map_err(|e| e.to_string())?;
+    // Older versions defaulted to the system theme. Migrate that untouched
+    // default to the new dark default while keeping explicit light choices.
+    if settings.theme == "system" {
+        settings.theme = "dark".into();
+        let _ = fs::write(
+            &path,
+            serde_json::to_vec_pretty(&settings).map_err(|e| e.to_string())?,
+        );
+    }
+    Ok(settings)
 }
 
 #[tauri::command]

@@ -16,6 +16,49 @@ pub enum GenerationState {
     Unknown,
 }
 
+fn embedded_asset(name: &str, variant: &str) -> Option<&'static [u8]> {
+    match (name, variant) {
+        ("writing", "dark") => Some(include_bytes!("../../assets/writing_dark.png")),
+        ("writing", "light") => Some(include_bytes!("../../assets/writing_light.png")),
+        ("writing", "win") => Some(include_bytes!("../../assets/writing_win.png")),
+        ("writing", "win2") => Some(include_bytes!("../../assets/writing_win2.png")),
+        ("send", "dark") => Some(include_bytes!("../../assets/send_dark.png")),
+        ("send", "light") => Some(include_bytes!("../../assets/send_light.png")),
+        ("send", "win") => Some(include_bytes!("../../assets/send_win.png")),
+        ("send", "win2") => Some(include_bytes!("../../assets/send_win2.png")),
+        ("no_prompt", "dark") => Some(include_bytes!("../../assets/no_prompt_dark.png")),
+        ("no_prompt", "light") => Some(include_bytes!("../../assets/no_prompt_light.png")),
+        ("no_prompt", "win") => Some(include_bytes!("../../assets/no_prompt_win.png")),
+        _ => None,
+    }
+}
+
+fn materialize_embedded_asset(name: &str, variant: &str) -> Option<String> {
+    let bytes = embedded_asset(name, variant)?;
+    let base = dirs::data_local_dir().or_else(dirs::config_dir)?;
+    let directory = base.join("PromptRunner").join("templates");
+    fs::create_dir_all(&directory).ok()?;
+    let path = directory.join(format!("{name}_{variant}.png"));
+    let current = fs::read(&path).ok();
+    if current.as_deref() != Some(bytes) {
+        fs::write(&path, bytes).ok()?;
+    }
+    Some(path.to_string_lossy().into_owned())
+}
+
+fn embedded_template_paths(name: &str, preferred_variant: &str) -> Vec<String> {
+    let mut variants = Vec::new();
+    for variant in [preferred_variant, "win", "win2", "dark", "light"] {
+        if !variants.contains(&variant) {
+            variants.push(variant);
+        }
+    }
+    variants
+        .into_iter()
+        .filter_map(|variant| materialize_embedded_asset(name, variant))
+        .collect()
+}
+
 pub fn default_template_paths(theme: &str) -> TemplateDefaults {
     let variant = if theme.eq_ignore_ascii_case("light") {
         "light"
@@ -32,12 +75,17 @@ pub fn default_template_paths(theme: &str) -> TemplateDefaults {
         }),
     ];
     let asset = |name: &str| {
-        candidates
-            .iter()
-            .flatten()
-            .map(|directory| directory.join(format!("{name}_{variant}.png")))
-            .find(|path| path.is_file())
-            .map(|path| path.to_string_lossy().into_owned())
+        embedded_template_paths(name, variant)
+            .into_iter()
+            .next()
+            .or_else(|| {
+                candidates
+                    .iter()
+                    .flatten()
+                    .map(|directory| directory.join(format!("{name}_{variant}.png")))
+                    .find(|path| path.is_file())
+                    .map(|path| path.to_string_lossy().into_owned())
+            })
     };
     TemplateDefaults {
         sample_busy: asset("writing"),
@@ -56,15 +104,33 @@ pub fn apply_default_templates(profile: &mut Profile, theme: &str) -> bool {
         return false;
     };
     let mut changed = false;
-    if zone.sample_busy.is_none() && defaults.sample_busy.is_some() {
+    if zone
+        .sample_busy
+        .as_deref()
+        .map(|path| !Path::new(path).is_file())
+        .unwrap_or(true)
+        && defaults.sample_busy.is_some()
+    {
         zone.sample_busy = defaults.sample_busy;
         changed = true;
     }
-    if zone.sample_ready.is_none() && defaults.sample_ready.is_some() {
+    if zone
+        .sample_ready
+        .as_deref()
+        .map(|path| !Path::new(path).is_file())
+        .unwrap_or(true)
+        && defaults.sample_ready.is_some()
+    {
         zone.sample_ready = defaults.sample_ready;
         changed = true;
     }
-    if zone.sample_empty.is_none() && defaults.sample_empty.is_some() {
+    if zone
+        .sample_empty
+        .as_deref()
+        .map(|path| !Path::new(path).is_file())
+        .unwrap_or(true)
+        && defaults.sample_empty.is_some()
+    {
         zone.sample_empty = defaults.sample_empty;
         changed = true;
     }
@@ -193,26 +259,28 @@ pub fn similarity(actual: &DynamicImage, template_path: &Path) -> AppResult<f32>
     Ok(1.0 - (total / pixels / 255.0))
 }
 
+fn best_similarity(
+    actual: &DynamicImage,
+    name: &str,
+    configured_path: Option<&str>,
+) -> AppResult<f32> {
+    let mut best = 0.0_f32;
+    if let Some(path) = configured_path {
+        best = similarity(actual, Path::new(path))?;
+    }
+    for path in embedded_template_paths(name, "dark") {
+        if configured_path != Some(path.as_str()) {
+            best = best.max(similarity(actual, Path::new(&path))?);
+        }
+    }
+    Ok(best)
+}
+
 pub fn detect(zone: &Zone, threshold: f32) -> AppResult<GenerationState> {
     let actual = sample(zone)?;
-    let busy = zone
-        .sample_busy
-        .as_deref()
-        .map(|path| similarity(&actual, Path::new(path)))
-        .transpose()?
-        .unwrap_or(0.0);
-    let ready = zone
-        .sample_ready
-        .as_deref()
-        .map(|path| similarity(&actual, Path::new(path)))
-        .transpose()?
-        .unwrap_or(0.0);
-    let empty = zone
-        .sample_empty
-        .as_deref()
-        .map(|path| similarity(&actual, Path::new(path)))
-        .transpose()?
-        .unwrap_or(0.0);
+    let busy = best_similarity(&actual, "writing", zone.sample_busy.as_deref())?;
+    let ready = best_similarity(&actual, "send", zone.sample_ready.as_deref())?;
+    let empty = best_similarity(&actual, "no_prompt", zone.sample_empty.as_deref())?;
     if busy >= threshold && busy >= ready && busy >= empty {
         Ok(GenerationState::Busy)
     } else if empty >= threshold && empty >= busy && empty >= ready {
@@ -225,11 +293,8 @@ pub fn detect(zone: &Zone, threshold: f32) -> AppResult<GenerationState> {
 }
 
 pub fn detect_empty(zone: &Zone, threshold: f32) -> AppResult<bool> {
-    let path = zone
-        .sample_empty
-        .as_deref()
-        .ok_or_else(|| AppError::message("Не указан empty-шаблон observation-зоны"))?;
-    Ok(similarity(&sample(zone)?, Path::new(path))? >= threshold)
+    let score = best_similarity(&sample(zone)?, "no_prompt", zone.sample_empty.as_deref())?;
+    Ok(score >= threshold)
 }
 
 #[cfg(test)]

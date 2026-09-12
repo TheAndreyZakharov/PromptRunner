@@ -4,7 +4,7 @@ import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import type { CalibrationResult, Profile, ProgressMetric, ProgressState, RunEvent, ScreenCapture, ScreenInfo, Settings, Summary, TemplateDefaults, Zone, ZoneKind } from "./types";
 import "./styles.css";
 
-const defaults: Settings = { bank_root: "", allowed_languages: ["RU"], active_language: "RU", poll_interval_seconds: 10, generation_timeout_seconds: 600, click_retries: 3, new_chat_every: 100, min_pause_seconds: 12, ready_confirmations: 2, preserve_clipboard: true, theme: "system" };
+const defaults: Settings = { bank_root: "", allowed_languages: ["RU"], active_language: "RU", poll_interval_seconds: 10, generation_timeout_seconds: 600, click_retries: 3, new_chat_every: 100, min_pause_seconds: 12, ready_confirmations: 2, preserve_clipboard: true, theme: "dark" };
 let settings = structuredClone(defaults);
 let profiles: Profile[] = [];
 let selectedProfile: Profile | null = null;
@@ -55,7 +55,7 @@ function render() {
   const overallProgress = bankProgress ? progressBar("Все вопросы банка", bankProgress.overall, "overall-progress") : "<div class=\"empty\">Проверьте банк, чтобы увидеть прогресс.</div>";
   const shownZones = specs.filter((item) => item[3] === tab).map(([name, label, purpose, kind]) => {
     const item = zone(name);
-    return `<div class="zone-card"><div class="zone-head"><strong>${label}</strong><span class="tag">${name}</span></div><div class="zone-fields">${(["x", "y", "width", "height"] as const).map((field) => `<label>${field}<input data-zone="${name}" data-field="${field}" type="number" min="${field === "x" || field === "y" ? 0 : 1}" value="${item[field]}"></label>`).join("")}</div>${kind === "observation" ? `<div class="zone-fields wide"><label>writing-шаблон (busy)<input data-zone="${name}" data-field="sample_busy" value="${esc(item.sample_busy ?? "")}" placeholder="/path/writing_dark.png"></label><label>send-шаблон (готов к отправке)<input data-zone="${name}" data-field="sample_ready" value="${esc(item.sample_ready ?? "")}" placeholder="/path/send_dark.png"></label></div>` : ""}<small>${kind === "observation" ? "writing = генерация идёт; no_prompt = поле пустое и ответ завершён; send = текст готов к отправке. Шаблоны из assets подставляются автоматически." : "Клик внутри зоны с повторной точкой при необходимости."}</small></div>`;
+    return `<div class="zone-card"><div class="zone-head"><strong>${label}</strong><span class="tag">${name}</span></div><div class="zone-fields">${(["x", "y", "width", "height"] as const).map((field) => `<label>${field}<input data-zone="${name}" data-field="${field}" type="number" min="${field === "x" || field === "y" ? 0 : 1}" value="${item[field]}"></label>`).join("")}</div>${kind === "observation" ? `<div class="zone-fields wide"><label>writing-шаблон (busy)<input data-zone="${name}" data-field="sample_busy" value="${esc(item.sample_busy ?? "")}" placeholder="/path/writing_dark.png"></label><label>send-шаблон (готов к отправке)<input data-zone="${name}" data-field="sample_ready" value="${esc(item.sample_ready ?? "")}" placeholder="/path/send_dark.png"></label></div>` : ""}<small>${kind === "observation" ? "writing = генерация идёт; no_prompt = поле пустое и ответ завершён; send = текст готов к отправке. Встроенные шаблоны, включая дополнительные варианты, подставляются автоматически." : "Клик внутри зоны с повторной точкой при необходимости."}</small></div>`;
   }).join("");
 
   app().innerHTML = `
