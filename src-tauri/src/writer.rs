@@ -8,28 +8,53 @@ pub fn format_answer(question: &Question, clipboard_text: &str) -> AppResult<Str
     if text.is_empty() {
         return Err(AppError::message("Буфер обмена пуст"));
     }
-    if !text.contains(&question.id) {
-        return Err(AppError::message(format!(
-            "Буфер не содержит ID {}",
-            question.id
-        )));
-    }
-    let first_line = text
-        .lines()
-        .find(|line| !line.trim().is_empty())
-        .unwrap_or_default();
-    let expected_marker = format!("[id: {}]", question.id);
-    if !first_line.contains(&expected_marker) || !first_line.trim_start().starts_with("- **") {
-        return Err(AppError::message(format!(
-            "Первая строка clipboard не соответствует вопросу {}",
-            question.id
-        )));
-    }
     let lower = text.to_lowercase();
-    if !lower.contains("*ответ:*") && !lower.contains("*answer:*") {
-        return Err(AppError::message("Буфер не содержит маркер ответа"));
+    let expected_marker = format!("[id: {}]", question.id).to_lowercase();
+    if lower.contains("[id:") && !lower.contains(&expected_marker) {
+        return Err(AppError::message(format!(
+            "Буфер содержит другой ID, ожидается {}",
+            question.id
+        )));
     }
-    Ok(format!("{}\n\n", text))
+
+    // The chat may copy a complete Markdown block, or only the answer body.
+    // In both cases write a fresh canonical block so prompts and instructions
+    // from the clipboard can never leak into the answer bank.
+    let answer = ["*ответ:*", "*answer:*"]
+        .iter()
+        .find_map(|marker| {
+            lower
+                .rfind(marker)
+                .map(|index| text[index + marker.len()..].trim())
+        })
+        .unwrap_or(text)
+        .lines()
+        .filter(|line| !line.trim_start().starts_with("```"))
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim()
+        .to_string();
+    if answer.is_empty() {
+        return Err(AppError::message("Ответ в clipboard пуст"));
+    }
+    if [
+        "## контекст текущей подтемы",
+        "## текущий вопрос",
+        "answer-generation-prompt",
+    ]
+    .iter()
+    .any(|marker| lower.contains(marker))
+        && !lower.contains("*ответ:*")
+        && !lower.contains("*answer:*")
+    {
+        return Err(AppError::message(
+            "В clipboard находится промпт, а не готовый ответ",
+        ));
+    }
+    Ok(format!(
+        "- **{}** [id: {}]\n*Ответ:*\n\n{}\n\n",
+        question.text, question.id, answer
+    ))
 }
 
 pub fn replace_question(question: &Question, clipboard_text: &str) -> AppResult<()> {
@@ -112,7 +137,7 @@ pub fn answer_text_from_clipboard() -> AppResult<String> {
 mod tests {
     use super::*;
     #[test]
-    fn answer_requires_question_id() {
+    fn answer_is_normalized_without_prompt_wrapper() {
         let q = Question {
             id: "RU-7".into(),
             language: "RU".into(),
@@ -123,10 +148,21 @@ mod tests {
             answer_file: "a.md".into(),
             source_line: 1,
         };
-        assert!(format_answer(&q, "answer").is_err());
+        assert_eq!(
+            format_answer(&q, "Простой ответ без обёртки").unwrap(),
+            "- **Q** [id: RU-7]\n*Ответ:*\n\nПростой ответ без обёртки\n\n"
+        );
         assert_eq!(
             format_answer(&q, "- **Q** [id: RU-7]\n*Ответ:*\nA").unwrap(),
-            "- **Q** [id: RU-7]\n*Ответ:*\nA\n\n"
+            "- **Q** [id: RU-7]\n*Ответ:*\n\nA\n\n"
+        );
+        assert_eq!(
+            format_answer(
+                &q,
+                "## Текущий вопрос\nQ [id: RU-7]\n\n*Ответ:*\nТолько ответ"
+            )
+            .unwrap(),
+            "- **Q** [id: RU-7]\n*Ответ:*\n\nТолько ответ\n\n"
         );
     }
 

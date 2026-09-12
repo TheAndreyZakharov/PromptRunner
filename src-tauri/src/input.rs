@@ -10,6 +10,16 @@ use enigo::{Key, Keyboard};
 use std::thread;
 use std::time::Duration;
 
+pub fn initialize() {
+    // Keep screenshot pixels, zones and Windows absolute mouse coordinates in
+    // the same DPI space. The call is intentionally best-effort because a
+    // packaged manifest may already declare the process DPI awareness.
+    #[cfg(target_os = "windows")]
+    {
+        let _ = enigo::set_dpi_awareness();
+    }
+}
+
 pub fn current_pointer() -> AppResult<(i32, i32)> {
     let enigo = Enigo::new(&Settings::default()).map_err(|e| AppError::Input(e.to_string()))?;
     enigo.location().map_err(|e| AppError::Input(e.to_string()))
@@ -189,7 +199,12 @@ fn move_smooth(
             .move_mouse(x.round() as i32, y.round() as i32, Coordinate::Abs)
             .map_err(|e| AppError::Input(e.to_string()))?;
         let speed_variation = ((std::f64::consts::PI * 2.7 * t + phase).sin() + 1.0) * 2.5;
-        let pause = (3.0 + (1.0 - (2.0 * t - 1.0).abs()) * 8.0 + speed_variation) as u64;
+        let base_pause = if cfg!(target_os = "windows") {
+            10.0
+        } else {
+            3.0
+        };
+        let pause = (base_pause + (1.0 - (2.0 * t - 1.0).abs()) * 8.0 + speed_variation) as u64;
         thread::sleep(Duration::from_millis(pause));
     }
     Ok(())

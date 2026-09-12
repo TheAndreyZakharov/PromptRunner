@@ -253,6 +253,7 @@ fn open_calibration(app: tauri::AppHandle, screen_index: u32) -> Result<(), Stri
 }
 
 pub fn run() {
+    input::initialize();
     let control = RunnerControl(Arc::new(Mutex::new(runner::ControlState::default())));
     tauri::Builder::default()
         .manage(AppState { control })
