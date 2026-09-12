@@ -189,10 +189,12 @@ async function boot() {
   if (settings.bank_root) void validate();
 }
 
-async function renderCalibration() {
+let calibrationRenderSerial = 0;
+async function renderCalibration(requestedScreenIndex?: number) {
+  const renderSerial = ++calibrationRenderSerial;
   const available = await invoke<ScreenInfo[]>("list_screens");
   calibrationDraft = specs.map(([name]) => structuredClone(zone(name)));
-  let activeScreen = selectedScreen ?? available.find((item) => item.is_primary) ?? available[0];
+  let activeScreen = (requestedScreenIndex === undefined ? undefined : available.find((item) => item.index === requestedScreenIndex)) ?? selectedScreen ?? available.find((item) => item.is_primary) ?? available[0];
   if (!activeScreen) { document.body.textContent = "Не найден доступный экран"; return; }
   document.body.className = "calibration-body";
   let zoom = 0.75;
@@ -220,7 +222,7 @@ async function renderCalibration() {
     const handles = ["n", "ne", "e", "se", "s", "sw", "w", "nw"];
     const palette = items.map((item) => { const fixed = fixedZones.has(item.name); return '<div class="palette-item ' + item.kind + (item.placed ? ' placed' : '') + (fixed ? ' fixed' : '') + '" data-palette-item="' + item.name + '"><button type="button" draggable="' + (!item.placed && !fixed) + '" class="palette-zone ' + item.kind + '" data-palette="' + item.name + '"><span class="palette-swatch" aria-hidden="true"></span><span>' + item.label + '<small>' + item.name + '</small></span></button><button type="button" class="palette-fix" data-fix="' + item.name + '"' + (item.placed ? '' : ' disabled') + '>' + (fixed ? 'Отменить фиксацию' : 'Зафиксировать') + '</button><span class="palette-status">' + (fixed ? '✓ Зафиксировано' : item.placed ? 'Не зафиксировано' : 'Сначала перетащите') + '</span></div>'; }).join("");
     document.body.innerHTML = '<div class="calibration-toolbar"><strong>PromptRunner · снимок всего экрана</strong><label>Монитор<select id="cal-screen">' + available.map((item) => '<option value="' + item.index + '"' + (item.index === capture.screen.index ? " selected" : "") + '>' + (item.is_primary ? "Основной · " : "Монитор · ") + item.width + "×" + item.height + " · дисплей " + (item.index + 1) + '</option>').join("") + '</select></label><label>Масштаб<select id="cal-zoom">' + zoomOptions.map(([value, label]) => '<option value="' + value + '"' + (Math.abs(value - zoom) < 0.001 ? " selected" : "") + '>' + label + '</option>').join("") + '</select></label><input id="cal-profile-name" placeholder="Имя профиля"><span id="calibration-status" class="calibration-status">Калибровка ещё не сохранена</span><span>Сначала перетащите мини-зону, измените её стороны, затем зафиксируйте зелёной кнопкой.</span><button id="calibration-save" class="primary">Сохранить (' + fixedCount + '/' + specs.length + ' зафиксировано)</button><button id="calibration-cancel">Отмена</button></div><div class="calibration-palette">' + palette + '<span class="palette-hint">✓ зелёный статус — зона зафиксирована. Отмените фиксацию, чтобы снова двигать и менять размер.</span></div><div id="calibration-scroll"><div id="calibration-stage" style="width:' + capture.image_width * zoom + 'px;height:' + capture.image_height * zoom + 'px"><img src="' + capture.data_url + '" width="' + capture.image_width * zoom + '" height="' + capture.image_height * zoom + '" draggable="false" alt="Фон снимка экрана">' + placedItems.map((item) => '<div class="cal-zone ' + item.kind + (fixedZones.has(item.name) ? ' fixed' : '') + '" data-zone="' + item.name + '" aria-label="' + item.label + '" style="left:' + item.x + 'px;top:' + item.y + 'px;width:' + item.width + 'px;height:' + item.height + 'px">' + handles.map((handle) => '<i class="resize-handle handle-' + handle + '" data-handle="' + handle + '" aria-hidden="true"></i>').join('') + '</div>').join("") + "</div></div>";
-    document.querySelector<HTMLSelectElement>("#cal-screen")!.addEventListener("change", async (event) => { const index = Number((event.target as HTMLSelectElement).value); activeScreen = available.find((item) => item.index === index)!; await invoke("open_calibration", { screenIndex: index }); await draw(await invoke<ScreenCapture>("capture_screen", { screenIndex: index })); });
+    document.querySelector<HTMLSelectElement>("#cal-screen")!.addEventListener("change", async (event) => { const index = Number((event.target as HTMLSelectElement).value); await invoke("open_calibration", { screenIndex: index }); });
     document.querySelector<HTMLSelectElement>("#cal-zoom")!.addEventListener("change", async (event) => { zoom = Number((event.target as HTMLSelectElement).value); await draw(capture); });
     document.onkeydown = (event) => { if (!(event.metaKey || event.ctrlKey)) return; if (event.key === "+" || event.key === "=") { event.preventDefault(); zoom = Math.min(5, Math.round((zoom + 0.1) * 100) / 100); void draw(capture); } else if (event.key === "-" || event.key === "_") { event.preventDefault(); zoom = Math.max(0.1, Math.round((zoom - 0.1) * 100) / 100); void draw(capture); } else if (event.key === "0") { event.preventDefault(); zoom = 1; void draw(capture); } };
     document.onwheel = (event) => { if (!(event.metaKey || event.ctrlKey)) return; event.preventDefault(); zoom = Math.max(0.1, Math.min(5, Math.round((zoom + (event.deltaY < 0 ? 0.1 : -0.1)) * 100) / 100)); void draw(capture); };
@@ -240,7 +242,12 @@ async function renderCalibration() {
     document.querySelector("#calibration-save")!.addEventListener("click", async () => { try { const result = specs.map(([name, label, purpose, kind]) => { const item = draftItem(name); if (!item || item.width < 1 || item.height < 1 || item.screen_index !== capture.screen.index || !fixedZones.has(name)) throw new Error("Разместите и зафиксируйте зону «" + label + "»"); return { ...item, name, kind, purpose, screen_index: capture.screen.index }; }); const profileName = (document.querySelector("#cal-profile-name") as HTMLInputElement).value.trim(); await emitTo("main", "calibration:zones", { screen: capture.screen, zones: result, profile_name: profileName || undefined }); await getCurrentWebviewWindow().hide(); } catch (error) { const status = document.querySelector("#calibration-status"); if (status) { status.textContent = String(error); status.className = "calibration-error"; } } });
     document.querySelector("#calibration-cancel")!.addEventListener("click", () => getCurrentWebviewWindow().hide());
   };
-  await draw(await invoke<ScreenCapture>("capture_screen", { screenIndex: activeScreen.index }));
+  const capture = await invoke<ScreenCapture>("capture_screen", { screenIndex: activeScreen.index });
+  if (renderSerial === calibrationRenderSerial) await draw(capture);
 }
 
-if ((await getCurrentWebviewWindow().label) === "calibration") void renderCalibration(); else void boot();
+const currentWindow = getCurrentWebviewWindow();
+if ((await currentWindow.label) === "calibration") {
+  await listen<number>("calibration:refresh", (event) => renderCalibration(event.payload).catch((error) => { document.body.textContent = "Ошибка обновления разметки: " + String(error); }));
+  void renderCalibration().catch((error) => { document.body.textContent = "Ошибка открытия разметки: " + String(error); });
+} else void boot();

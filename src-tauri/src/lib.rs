@@ -19,7 +19,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
-use tauri::{Manager, State, WebviewUrl, WebviewWindowBuilder};
+use tauri::{Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 
 struct AppState {
     control: RunnerControl,
@@ -177,7 +177,14 @@ fn capture_screen(app: tauri::AppHandle, screen_index: u32) -> Result<ScreenCapt
             let _ = window.hide();
         }
     }
-    thread::sleep(Duration::from_millis(120));
+    // On Windows the compositor may need a moment after hiding the app
+    // windows before BitBlt/screen-capture sees the current desktop. Discard
+    // one frame and use a second frame so the calibration view is not stale.
+    thread::sleep(Duration::from_millis(if cfg!(windows) { 350 } else { 120 }));
+    if cfg!(windows) {
+        let _ = visual::screen_capture(screen_index);
+        thread::sleep(Duration::from_millis(120));
+    }
     let result = visual::screen_capture(screen_index).map_err(|e| e.to_string());
     if main_visible {
         if let Some(window) = &main {
@@ -215,24 +222,34 @@ fn open_calibration(app: tauri::AppHandle, screen_index: u32) -> Result<(), Stri
         .into_iter()
         .find(|item| item.index == screen_index)
         .ok_or_else(|| "Выбранный экран недоступен".to_string())?;
-    let window = if let Some(window) = app.get_webview_window("calibration") {
-        window
+    let (window, was_existing) = if let Some(window) = app.get_webview_window("calibration") {
+        (window, true)
     } else {
-        WebviewWindowBuilder::new(&app, "calibration", WebviewUrl::App("index.html".into()))
-            .title("PromptRunner — калибровка")
-            .fullscreen(false)
-            .decorations(true)
-            .always_on_top(false)
-            .build()
-            .map_err(|e| e.to_string())?
+        (
+            WebviewWindowBuilder::new(&app, "calibration", WebviewUrl::App("index.html".into()))
+                .title("PromptRunner — калибровка")
+                .fullscreen(false)
+                .decorations(true)
+                .always_on_top(false)
+                .build()
+                .map_err(|e| e.to_string())?,
+            false,
+        )
     };
     let _ = window.set_fullscreen(false);
+    let _ = window.unminimize();
     window
         .set_size(tauri::LogicalSize::new(1200.0, 820.0))
         .map_err(|e| e.to_string())?;
     let _ = window.center();
     window.show().map_err(|e| e.to_string())?;
-    window.set_focus().map_err(|e| e.to_string())
+    window.set_focus().map_err(|e| e.to_string())?;
+    // A calibration webview is kept alive and hidden when the user presses
+    // Cancel. Tell an existing webview to take a fresh capture on every open.
+    if was_existing {
+        let _ = app.emit_to("calibration", "calibration:refresh", screen_index);
+    }
+    Ok(())
 }
 
 pub fn run() {
