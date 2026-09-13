@@ -255,6 +255,13 @@ fn run_loop(app: &AppHandle, control: &RunnerControl, config: &RunConfig) -> App
             active_language: config.active_language.clone(),
             question_id: question.id.clone(),
         })?;
+        let expected_tail = format!("{} [id: {}]", question.text, question.id);
+        if !prompt_text.trim_end().ends_with(&expected_tail) {
+            return Err(AppError::message(format!(
+                "Сформированный промпт не соответствует текущему вопросу {}",
+                question.id
+            )));
+        }
         if !config.dry_run {
             let input_zone = required_zone(&config.profile, "input")?;
             let send_zone = required_zone(&config.profile, "send")?;
@@ -318,17 +325,44 @@ fn run_loop(app: &AppHandle, control: &RunnerControl, config: &RunConfig) -> App
             clipboard
                 .set_text(sentinel.clone())
                 .map_err(|e| AppError::Clipboard(e.to_string()))?;
-            input::click_zone(copy_zone, 0, origin)?;
-            thread::sleep(Duration::from_millis(500));
-            let copied = clipboard
-                .get_text()
-                .map_err(|e| AppError::Clipboard(e.to_string()))?;
-            if copied.trim() == sentinel {
-                return Err(AppError::message(format!(
+            let mut copied = None;
+            for attempt in 0..config.profile.click_retries.max(1) {
+                check_control(control)?;
+                input::click_zone(copy_zone, attempt, origin)?;
+                thread::sleep(Duration::from_millis(500));
+                let value = clipboard
+                    .get_text()
+                    .map_err(|e| AppError::Clipboard(e.to_string()))?;
+                if value.trim() != sentinel {
+                    copied = Some(value);
+                    break;
+                }
+                if attempt + 1 < config.profile.click_retries.max(1) {
+                    emit(
+                        app,
+                        event(
+                            "RETRY_COPY",
+                            format!(
+                                "Буфер не изменился, повтор копирования ({}/{})",
+                                attempt + 1,
+                                config.profile.click_retries.max(1)
+                            ),
+                            Some(question.id.clone()),
+                            processed,
+                            config.session_limit,
+                            started_at.clone(),
+                            started.elapsed().as_secs(),
+                            None,
+                        ),
+                    );
+                }
+            }
+            let copied = copied.ok_or_else(|| {
+                AppError::message(format!(
                     "Кнопка копирования не изменила буфер для {}",
                     question.id
-                )));
-            }
+                ))
+            })?;
             writer::replace_question(&question, &copied)?;
             answered_ids.insert(question.id.clone());
             if let Some(previous) = previous_clipboard {
@@ -394,7 +428,7 @@ fn run_loop(app: &AppHandle, control: &RunnerControl, config: &RunConfig) -> App
                 ),
             ),
         );
-        current = bank::next_question(&questions, Some(&question.id))?;
+        current = bank::next_question_after(&questions, &answered_ids, &question.id);
     }
     progress_state.current_question_id = None;
     progress_state.status = "COMPLETED".into();

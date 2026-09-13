@@ -385,6 +385,27 @@ pub fn next_question(
     Ok(None)
 }
 
+/// Select the first unanswered question strictly after the question that was
+/// just processed. Using the in-memory answered set and a strict boundary
+/// prevents a stale answer-file read from selecting the same ID again.
+pub fn next_question_after(
+    questions: &[Question],
+    answered_ids: &HashSet<String>,
+    current_id: &str,
+) -> Option<Question> {
+    let Some(position) = questions
+        .iter()
+        .position(|question| question.id == current_id)
+    else {
+        return None;
+    };
+    questions
+        .iter()
+        .skip(position + 1)
+        .find(|question| !answered_ids.contains(&question.id))
+        .cloned()
+}
+
 pub fn context_for_subtopic(questions: &[Question], current: &Question) -> String {
     questions
         .iter()
@@ -502,6 +523,34 @@ mod tests {
     #[test]
     fn numeric_ids_sort_naturally() {
         assert!(numeric_key("RU-2").cmp(&numeric_key("RU-10")).is_lt());
+    }
+
+    #[test]
+    fn next_question_after_is_strictly_after_current() {
+        let question = |id: &str| Question {
+            id: id.into(),
+            language: "RU".into(),
+            text: id.into(),
+            section: "1".into(),
+            subtopic: "1".into(),
+            source_file: "questions.md".into(),
+            answer_file: id.into(),
+            source_line: 1,
+        };
+        let questions = vec![
+            question("RU-004901"),
+            question("RU-004902"),
+            question("RU-004903"),
+        ];
+        let mut answered = HashSet::new();
+        answered.insert("RU-004902".into());
+        assert_eq!(
+            next_question_after(&questions, &answered, "RU-004902")
+                .unwrap()
+                .id,
+            "RU-004903"
+        );
+        assert!(next_question_after(&questions, &answered, "RU-004903").is_none());
     }
     #[test]
     fn progress_groups_questions_by_section_and_subtopic() {
