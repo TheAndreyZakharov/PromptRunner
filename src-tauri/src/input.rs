@@ -4,7 +4,7 @@ use crate::model::Zone;
 use core_graphics::event::{CGEvent, CGEventFlags, CGEventTapLocation, KeyCode};
 #[cfg(target_os = "macos")]
 use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
-use enigo::{Button, Coordinate, Direction, Enigo, Mouse, Settings};
+use enigo::{Axis, Button, Coordinate, Direction, Enigo, Mouse, Settings};
 #[cfg(not(target_os = "macos"))]
 use enigo::{Key, Keyboard};
 use std::thread;
@@ -60,6 +60,27 @@ pub fn move_cursor_away(
     move_smooth(&mut enigo, start, point, 7)?;
     thread::sleep(Duration::from_millis(50));
     Ok(())
+}
+
+/// Move the real system cursor into the calibrated response area and scroll
+/// the target chat down. Keeping the move and wheel event in one Enigo
+/// instance is important on Windows, where the wheel is sent to the window
+/// currently under the cursor.
+pub fn scroll_down(zone: &Zone, attempt: u8, origin: (i32, i32)) -> AppResult<()> {
+    if !zone.is_valid() {
+        return Err(AppError::message(format!(
+            "Некорректная зона {}",
+            zone.name
+        )));
+    }
+    let mut enigo = Enigo::new(&Settings::default()).map_err(|e| AppError::Input(e.to_string()))?;
+    let point = sample_point(zone, attempt, origin);
+    let start = enigo.location().unwrap_or(point);
+    move_smooth(&mut enigo, start, point, attempt)?;
+    thread::sleep(Duration::from_millis(35));
+    enigo
+        .scroll(5, Axis::Vertical)
+        .map_err(|e| AppError::Input(e.to_string()))
 }
 
 pub fn paste_text(zone: &Zone, text: &str, origin: (i32, i32)) -> AppResult<()> {

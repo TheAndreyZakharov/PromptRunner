@@ -55,9 +55,13 @@ fn pointer_position() -> Result<[i32; 2], String> {
 #[tauri::command]
 fn test_action_zone(zone: Zone, origin_x: i32, origin_y: i32) -> Result<(), String> {
     if zone.kind != "action" {
-        return Err("Тестовый клик разрешён только для action-зоны".into());
+        return Err("Тестовое действие разрешено только для action-зоны".into());
     }
-    input::click_zone(&zone, 0, (origin_x, origin_y)).map_err(|e| e.to_string())
+    if zone.name == "scroll" {
+        input::scroll_down(&zone, 0, (origin_x, origin_y)).map_err(|e| e.to_string())
+    } else {
+        input::click_zone(&zone, 0, (origin_x, origin_y)).map_err(|e| e.to_string())
+    }
 }
 
 #[tauri::command]
@@ -112,9 +116,11 @@ fn load_settings() -> Result<AppSettings, String> {
             allowed_languages: vec!["RU".into()],
             active_language: "RU".into(),
             poll_interval_seconds: 10,
+            send_retry_delay_seconds: 10,
             generation_timeout_seconds: 600,
             click_retries: 3,
             new_chat_every: 100,
+            scroll_after_seconds: 2,
             theme: "dark".into(),
             min_pause_seconds: 12,
             ready_confirmations: 2,

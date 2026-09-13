@@ -259,6 +259,7 @@ fn run_loop(app: &AppHandle, control: &RunnerControl, config: &RunConfig) -> App
             let input_zone = required_zone(&config.profile, "input")?;
             let send_zone = required_zone(&config.profile, "send")?;
             let copy_zone = required_zone(&config.profile, "copy")?;
+            let scroll_zone = required_zone(&config.profile, "scroll")?;
             let observation_zone = required_zone(&config.profile, "generation_state")?;
             let origin = (config.profile.screen_x, config.profile.screen_y);
             let previous_clipboard = if config.preserve_clipboard {
@@ -304,6 +305,13 @@ fn run_loop(app: &AppHandle, control: &RunnerControl, config: &RunConfig) -> App
                 &started_at,
                 busy_seen,
                 config.ready_confirmations,
+                scroll_zone,
+            )?;
+            scroll_after_completion(
+                control,
+                scroll_zone,
+                origin,
+                config.profile.scroll_after_seconds,
             )?;
             let sentinel = format!("PROMPTRUNNER_COPY_SENTINEL_{}", question.id);
             let mut clipboard = Clipboard::new().map_err(|e| AppError::Clipboard(e.to_string()))?;
@@ -499,7 +507,7 @@ fn click_until_busy(
             profile.screen_height,
         )?;
         let deadline =
-            Instant::now() + Duration::from_secs(profile.poll_interval_seconds.clamp(1, 10));
+            Instant::now() + Duration::from_secs(profile.send_retry_delay_seconds.max(1));
         loop {
             match visual::detect(observation_zone, profile.visual_threshold)? {
                 GenerationState::Busy => {
@@ -519,31 +527,15 @@ fn click_until_busy(
                     return Ok(true);
                 }
                 GenerationState::SendReady => {
-                    emit(
-                        app,
-                        event(
-                            "RETRY_SEND",
-                            format!(
-                                "Состояние send не изменилось, повторная точка отправки ({}/{})",
-                                attempt + 1,
-                                profile.click_retries.max(1)
-                            ),
-                            Some(id.to_string()),
-                            processed,
-                            limit,
-                            started_at.clone(),
-                            started.elapsed().as_secs(),
-                            None,
-                        ),
-                    );
-                    break;
+                    // Keep the prompt in the input and wait the configured
+                    // retry delay before clicking send again. This avoids a
+                    // burst of clicks when the chat UI has not reacted yet.
                 }
                 GenerationState::Empty => {
                     if Instant::now() >= deadline {
-                        return Err(AppError::message(format!(
-                            "После отправки не подтверждено состояние writing для {}",
-                            id
-                        )));
+                        // Empty can mean that the click was swallowed by the
+                        // chat. Treat it like send-ready and retry the same
+                        // prompt instead of failing immediately.
                     }
                 }
                 GenerationState::Unknown => {
@@ -551,6 +543,27 @@ fn click_until_busy(
                         "После отправки observation-зона не распознана",
                     ))
                 }
+            }
+            if Instant::now() >= deadline {
+                emit(
+                    app,
+                    event(
+                        "RETRY_SEND",
+                        format!(
+                            "Writing не подтверждён, повторная отправка после ожидания {} сек. ({}/{})",
+                            profile.send_retry_delay_seconds.max(1),
+                            attempt + 1,
+                            profile.click_retries.max(1)
+                        ),
+                        Some(id.to_string()),
+                        processed,
+                        limit,
+                        started_at.clone(),
+                        started.elapsed().as_secs(),
+                        None,
+                    ),
+                );
+                break;
             }
             thread::sleep(Duration::from_millis(250));
         }
@@ -574,6 +587,7 @@ fn wait_until_generation_complete(
     started_at: &Option<String>,
     mut busy_seen: bool,
     confirmations_required: u8,
+    scroll_zone: &crate::model::Zone,
 ) -> AppResult<()> {
     input::move_cursor_away(
         zone,
@@ -583,6 +597,11 @@ fn wait_until_generation_complete(
     )?;
     let deadline = Instant::now() + Duration::from_secs(profile.generation_timeout_seconds.max(1));
     let mut empty_seen = 0_u8;
+    let mut next_scroll = Instant::now();
+    let mut scroll_attempt = 0_u8;
+    let scroll_interval = Duration::from_secs(1);
+    let poll_interval = Duration::from_secs(profile.poll_interval_seconds.max(1));
+    let mut next_detection = Instant::now();
     loop {
         check_control(control)?;
         if Instant::now() > deadline {
@@ -591,9 +610,26 @@ fn wait_until_generation_complete(
                 id
             )));
         }
+        if busy_seen && Instant::now() >= next_scroll {
+            input::scroll_down(
+                scroll_zone,
+                scroll_attempt,
+                (profile.screen_x, profile.screen_y),
+            )?;
+            scroll_attempt = scroll_attempt.wrapping_add(1);
+            next_scroll = Instant::now() + scroll_interval;
+        }
+        if Instant::now() < next_detection {
+            thread::sleep(Duration::from_millis(100));
+            continue;
+        }
+        next_detection = Instant::now() + poll_interval;
         match visual::detect(zone, profile.visual_threshold)? {
             GenerationState::Busy => {
-                busy_seen = true;
+                if !busy_seen {
+                    busy_seen = true;
+                    next_scroll = Instant::now();
+                }
                 empty_seen = 0;
                 emit(
                     app,
@@ -624,7 +660,6 @@ fn wait_until_generation_complete(
                             None,
                         ),
                     );
-                    thread::sleep(Duration::from_secs(profile.poll_interval_seconds.max(1)));
                     continue;
                 }
                 empty_seen += 1;
@@ -682,8 +717,29 @@ fn wait_until_generation_complete(
                 return Err(AppError::message("Неоднозначное состояние генерации"));
             }
         }
-        thread::sleep(Duration::from_secs(profile.poll_interval_seconds.max(1)));
+        thread::sleep(Duration::from_millis(100));
     }
+}
+
+fn scroll_after_completion(
+    control: &RunnerControl,
+    zone: &crate::model::Zone,
+    origin: (i32, i32),
+    seconds: u64,
+) -> AppResult<()> {
+    if seconds == 0 {
+        return Ok(());
+    }
+    let deadline = Instant::now() + Duration::from_secs(seconds);
+    let mut attempt = 0_u8;
+    while Instant::now() < deadline {
+        check_control(control)?;
+        input::scroll_down(zone, attempt, origin)?;
+        attempt = attempt.wrapping_add(1);
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        thread::sleep(remaining.min(Duration::from_millis(500)));
+    }
+    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -797,7 +853,14 @@ fn validate_config(config: &RunConfig) -> AppResult<()> {
         {
             return Err(AppError::message("Разрешение или масштаб монитора изменились; выберите или создайте подходящий профиль"));
         }
-        for name in ["input", "send", "copy", "new_chat", "generation_state"] {
+        for name in [
+            "input",
+            "send",
+            "copy",
+            "new_chat",
+            "scroll",
+            "generation_state",
+        ] {
             let kind = if name == "generation_state" {
                 "observation"
             } else {

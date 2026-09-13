@@ -63,7 +63,14 @@ pub fn save(profile: &Profile) -> AppResult<()> {
         .iter()
         .map(|zone| zone.name.as_str())
         .collect::<HashSet<_>>();
-    for required in ["input", "send", "copy", "new_chat", "generation_state"] {
+    for required in [
+        "input",
+        "send",
+        "copy",
+        "new_chat",
+        "scroll",
+        "generation_state",
+    ] {
         if !names.contains(required) {
             return Err(AppError::message(format!(
                 "В профиле отсутствует зона {required}"
@@ -80,6 +87,7 @@ pub fn save(profile: &Profile) -> AppResult<()> {
         ("send", "action"),
         ("copy", "action"),
         ("new_chat", "action"),
+        ("scroll", "action"),
         ("generation_state", "observation"),
     ] {
         if profile

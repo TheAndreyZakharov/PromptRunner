@@ -121,15 +121,27 @@ pub struct Profile {
     pub screen_y: i32,
     pub zones: Vec<Zone>,
     pub poll_interval_seconds: u64,
+    #[serde(default = "default_send_retry_delay_seconds")]
+    pub send_retry_delay_seconds: u64,
     pub generation_timeout_seconds: u64,
     pub click_retries: u8,
     pub new_chat_every: u32,
+    #[serde(default = "default_scroll_after_seconds")]
+    pub scroll_after_seconds: u64,
     #[serde(default = "default_visual_threshold")]
     pub visual_threshold: f32,
 }
 
 fn default_visual_threshold() -> f32 {
     0.82
+}
+
+fn default_send_retry_delay_seconds() -> u64 {
+    10
+}
+
+fn default_scroll_after_seconds() -> u64 {
+    2
 }
 
 impl Default for Profile {
@@ -147,9 +159,11 @@ impl Default for Profile {
             screen_y: 0,
             zones: Vec::new(),
             poll_interval_seconds: 10,
+            send_retry_delay_seconds: 10,
             generation_timeout_seconds: 600,
             click_retries: 3,
             new_chat_every: 100,
+            scroll_after_seconds: 2,
             visual_threshold: 0.82,
         }
     }
@@ -197,9 +211,13 @@ pub struct AppSettings {
     pub active_language: String,
     pub selected_profile_id: Option<String>,
     pub poll_interval_seconds: u64,
+    #[serde(default = "default_send_retry_delay_seconds")]
+    pub send_retry_delay_seconds: u64,
     pub generation_timeout_seconds: u64,
     pub click_retries: u8,
     pub new_chat_every: u32,
+    #[serde(default = "default_scroll_after_seconds")]
+    pub scroll_after_seconds: u64,
     pub theme: String,
     #[serde(default)]
     pub min_pause_seconds: u64,

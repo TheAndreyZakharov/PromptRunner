@@ -27,9 +27,11 @@ export interface Profile {
   screen_y: number;
   zones: Zone[];
   poll_interval_seconds: number;
+  send_retry_delay_seconds: number;
   generation_timeout_seconds: number;
   click_retries: number;
   new_chat_every: number;
+  scroll_after_seconds: number;
   visual_threshold?: number;
 }
 
@@ -39,9 +41,11 @@ export interface Settings {
   active_language: string;
   selected_profile_id?: string;
   poll_interval_seconds: number;
+  send_retry_delay_seconds: number;
   generation_timeout_seconds: number;
   click_retries: number;
   new_chat_every: number;
+  scroll_after_seconds: number;
   theme: "system" | "light" | "dark";
   min_pause_seconds: number;
   ready_confirmations: number;
