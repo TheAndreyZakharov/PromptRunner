@@ -2,7 +2,7 @@
 :root[data-theme="light"] { color-scheme: light; background: #f2f3f5; color: #17181b; }
 @media (prefers-color-scheme: light) { :root[data-theme="system"] { color-scheme: light; background: #f2f3f5; color: #17181b; } }
 * { box-sizing: border-box; }
-body { margin: 0; min-width: 860px; }
+body { margin: 0; min-width: 0; }
 button, input, select { font: inherit; }
 button { cursor: pointer; border: 1px solid #30333a; border-radius: 8px; padding: 9px 13px; color: inherit; background: #1a1c21; }
 button:hover { border-color: #6d7280; }
@@ -46,9 +46,9 @@ h1, h2, p { margin: 0; } h1 { font-size: 26px; letter-spacing: -0.03em; } h2 { f
 .prompt-preview pre { max-height: 280px; overflow: auto; margin-top: 10px; padding: 10px; border-radius: 7px; background: #111216; }
 footer { margin-top: 17px; }
 .calibration-body { min-width: 0; overflow: hidden; background: #101114; user-select: none; }
-.calibration-toolbar { position: fixed; z-index: 5; inset: 0 0 auto; height: 45px; display: flex; align-items: center; gap: 14px; padding: 8px 14px; color: #f4f5f7; background: rgba(17, 19, 24, .94); font-size: 12px; }
-.calibration-toolbar span { flex: 1; color: #aeb2bc; } .calibration-toolbar button { padding: 6px 10px; }
-.calibration-toolbar input { width: 150px; padding: 5px 8px; }
+.calibration-toolbar { position: fixed; z-index: 6; inset: 0 0 auto; height: 40px; display: flex; align-items: center; gap: 10px; padding: 5px 10px; color: #f4f5f7; background: rgba(17, 19, 24, .96); font-size: 11px; }
+.calibration-toolbar span { flex: 1; color: #aeb2bc; } .calibration-toolbar button { padding: 5px 9px; }
+.calibration-toolbar input { width: 150px; padding: 4px 7px; }
 .calibration-toolbar .calibration-status { flex: 0 0 auto; color: #aeb2bc; }
 .calibration-toolbar .calibration-error { flex: 0 0 auto; color: #ff9c9c; }
 .cal-zone { position: absolute; min-width: 1px; min-height: 1px; border: 2px solid #8db7ff; border-radius: 4px; background: rgba(90, 145, 230, .2); color: #fff; padding: 0; cursor: move; user-select: none; touch-action: none; }
@@ -65,28 +65,44 @@ footer { margin-top: 17px; }
 .cal-zone.active { box-shadow: 0 0 0 2px #fff, 0 0 16px rgba(141, 183, 255, .9); z-index: 3; }
 .cal-zone.observation.active { box-shadow: 0 0 0 2px #fff, 0 0 16px rgba(255, 189, 112, .9); }
 .cal-zone.fixed { border-color: #65dda0; background: rgba(55, 180, 108, .18); cursor: not-allowed; }
-.calibration-palette { position: fixed; z-index: 5; top: 45px; left: 0; right: 0; height: 116px; display: flex; align-items: center; gap: 8px; overflow-x: auto; padding: 8px 14px; background: rgba(30, 33, 40, .98); border-bottom: 1px solid #3a3e48; }
-.palette-item { flex: 0 0 158px; height: 98px; display: grid; grid-template-columns: 1fr; grid-template-rows: 43px 27px 20px; gap: 3px; }
+.calibration-palette { position: fixed; z-index: 5; top: 40px; left: 0; bottom: 0; width: 220px; display: flex; flex-direction: column; align-items: stretch; gap: 7px; overflow-x: hidden; overflow-y: auto; padding: 8px; background: rgba(30, 33, 40, .98); border-right: 1px solid #3a3e48; }
+.palette-item { flex: 0 0 auto; width: 100%; height: auto; display: grid; grid-template-columns: 1fr; grid-template-rows: auto auto auto; gap: 3px; }
 .palette-item.fixed { border-radius: 8px; box-shadow: 0 0 0 1px #65dda0; }
-.palette-zone { min-width: 0; display: flex; align-items: center; gap: 8px; padding: 7px 10px; text-align: left; border-color: #6f9fe7; background: rgba(90, 145, 230, .18); font-size: 12px; cursor: grab; }
+.palette-zone { width: 100%; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 6px 8px; text-align: left; border-color: #6f9fe7; background: rgba(90, 145, 230, .18); font-size: 11px; cursor: grab; }
 .palette-zone:active { cursor: grabbing; }
 .palette-zone.placed { opacity: .72; }
 .palette-swatch { flex: 0 0 auto; width: 20px; height: 20px; border: 2px solid #8db7ff; border-radius: 3px; background: rgba(90, 145, 230, .2); }
 .palette-zone.observation .palette-swatch { border-color: #ffbd70; background: rgba(226, 145, 45, .22); }
 .palette-zone.observation { border-color: #e7a55d; background: rgba(226, 145, 45, .18); }
-.palette-fix { padding: 4px 7px; font-size: 11px; }
+.palette-fix { width: 100%; padding: 4px 7px; font-size: 10px; }
 .palette-item.fixed .palette-fix { color: #101c15; background: #65dda0; border-color: #65dda0; }
 .palette-status { padding: 1px 4px; color: #aeb2bc; font-size: 10px; }
 .palette-item.fixed .palette-status { color: #65dda0; font-weight: 700; }
 .palette-zone small { display: block; margin-top: 3px; opacity: .7; font-size: 10px; }
 .palette-zone.active { outline: 2px solid #fff; }
-.palette-hint { flex: 1 0 220px; color: #aeb2bc; font-size: 11px; line-height: 1.35; }
+.calibration-actions { display: grid; gap: 6px; margin-top: 3px; padding-top: 9px; border-top: 1px solid #3a3e48; }
+.calibration-actions input { width: 100%; padding: 6px 7px; font-size: 11px; }
+.calibration-actions button { width: 100%; padding: 6px 7px; font-size: 11px; }
+.calibration-actions .calibration-status, .calibration-actions .calibration-error { display: block; min-height: 15px; color: #aeb2bc; font-size: 10px; line-height: 1.3; }
+.calibration-actions .calibration-error { color: #ff9c9c; }
+.palette-hint { flex: 0 0 auto; color: #aeb2bc; font-size: 10px; line-height: 1.35; }
 #calibration-stage > img { pointer-events: none; -webkit-user-drag: none; }
 .calibration-toolbar label { display: flex; align-items: center; gap: 7px; margin: 0; color: #fff; white-space: nowrap; }
-.calibration-toolbar select { width: auto; min-width: 180px; padding: 5px 8px; }
-#calibration-scroll { position: absolute; inset: 161px 0 0; overflow: auto; user-select: none; }
+.calibration-toolbar select { width: auto; min-width: 115px; padding: 4px 7px; }
+#calibration-scroll { position: absolute; inset: 40px 0 0 220px; overflow: auto; user-select: none; }
 #calibration-stage { position: relative; margin: 0; }
 #calibration-stage > img { display: block; max-width: none; user-select: none; }
 .template-actions { display: flex; gap: 8px; margin-top: 10px; }
 .template-actions button { padding: 6px 9px; font-size: 11px; }
 .zone-test { margin-top: 10px; padding: 6px 9px; font-size: 11px; }
+@media (max-width: 760px) {
+  .shell { padding: 14px; }
+  .topbar { align-items: flex-start; flex-wrap: wrap; }
+  .grid { grid-template-columns: 1fr; }
+  .row { grid-template-columns: 1fr; }
+  .card { padding: 13px; }
+  .profile-actions, .home-run-controls { align-items: stretch; flex-wrap: wrap; }
+  .profile-actions input { max-width: none; flex: 1 1 100%; }
+  .metrics { grid-template-columns: 1fr; }
+  .zone-fields { grid-template-columns: repeat(2, 1fr); }
+}

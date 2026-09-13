@@ -13,20 +13,20 @@
     "windows": [
       {
         "title": "PromptRunner",
-        "width": 1040,
-        "height": 820,
-        "minWidth": 860,
-        "minHeight": 640,
+        "width": 880,
+        "height": 640,
+        "minWidth": 520,
+        "minHeight": 360,
         "resizable": true,
         "visible": false
       },
       {
         "label": "calibration",
         "title": "PromptRunner — калибровка",
-        "width": 1200,
-        "height": 820,
-        "minWidth": 760,
-        "minHeight": 560,
+        "width": 900,
+        "height": 620,
+        "minWidth": 520,
+        "minHeight": 360,
         "resizable": true,
         "fullscreen": false,
         "transparent": false,

@@ -238,10 +238,12 @@ fn open_calibration(app: tauri::AppHandle, screen_index: u32) -> Result<(), Stri
     };
     let _ = window.set_fullscreen(false);
     let _ = window.unminimize();
-    window
-        .set_size(tauri::LogicalSize::new(1200.0, 820.0))
-        .map_err(|e| e.to_string())?;
-    let _ = window.center();
+    if !was_existing {
+        window
+            .set_size(tauri::LogicalSize::new(900.0, 620.0))
+            .map_err(|e| e.to_string())?;
+        let _ = window.center();
+    }
     window.show().map_err(|e| e.to_string())?;
     window.set_focus().map_err(|e| e.to_string())?;
     // A calibration webview is kept alive and hidden when the user presses
